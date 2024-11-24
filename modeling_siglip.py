@@ -74,6 +74,7 @@ class SiglipVisionEmbeddings(nn.Module):
         return embeddings
 
 class SiglipAttention(nn.Module):
+
     def __init__(self, config):
         super().__init__()
         self.config    = config
@@ -88,7 +89,54 @@ class SiglipAttention(nn.Module):
         self.q_proj    = nn.Linear(self.embed_dim, self.embed_dim)
         self.out_proj  = nn.Linear(self.embed_dim, self.embed_dim)
 
-    def forward(self):
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        #hidden_states         : [Batch_Size, Num_Patches, Embed_Dim]
+        batch_size, seq_len, _ = hidden_states.size()
+        #query_states          : [Batch_Size, Num_Patches, Embed_Dim]
+        query_states           = self.q_proj(hidden_states)
+        #key_states            : [Batch_Size, Num_Patches, Embed_Dim]
+        key_states             = self.k_proj(hidden_states)
+        #value_states          : [Batch_Size, Num_Patches, Embed_Dim]
+        value_states           = self.v_proj(hidden_states)
+        #query_states          : [Batch_Size, Num_Heads, Num_Patches, Head_Dim]
+        #Before transpose      : [Batch_Size, Num_Patches, Num_Heads, Num_Patches]
+        #After transpose       : [Batch_Size, Num_Heads, Num_Patches, Num_Patches] cause transpose on 1,2
+        query_states           = query_states.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1,2)
+        key_states             = key_states.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1,2)
+        value_states           = value_states.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1,2)
+        #Calculate the attention using the formula Q*K^T/sqrt(d_k).
+        #attn_weights          : [Batch_Size, Num_Heads, Num_Patches, Num_Patches]
+        attn_weights           = (torch.matmul(query_states, key_states.transpose(2,3)) * self.scale)
+
+        if attn_weights.size() != (batch_size, self.num_heads, seq_len, seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(batch_size, self.num_heads, seq_len, seq_len)}, but is"
+                f"{attn_weights.size()}"
+            )
+
+        #Appy softmax rowwise. attn_weights : [Batch_Size, Num_Heads, Num_Patches, Num_Patches]
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        #Appy dropout only during training
+        attn_weights = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+        #Multiply attention weights by value states. attn_output: [Batch_Size, Num_Heads, Num_Patches, Head_Dim]
+        attn_output  = torch.matmul(attn_weights, value_states) 
+
+        if attn_weights.size() != (batch_size, self.num_heads, seq_len, seq_len):
+            raise ValueError(
+                f"Attention weights should be of size {(batch_size, self.num_heads, seq_len, self.head_dim)}, but is"
+                f"{attn_weights.size()}"
+            )
+
+        #Step 5: [Batch_Size, Num_Heads, Num_Patches, Head_Dim] -> [Batch_Size,  Num_Patches, Num_Heads, Head_Dim] 
+        attn_output = attn_output.transpose(1,2).contiguous() #Contiguous put the whole metric in memory in contguous localtion to avoid computation overhead.
+        #Step 6: [Batch_Size, Num_Patches, Num_Heads,  Head_Dim] -> [Batch_Size,  Num_Patches, Embed_Dim]
+        attn_output = attn_output.reshape(batch_size, seq_len, self.embed_dim)
+
+        #[Batch_Size,  Num_Patches, Embed_Dim]
+        attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights
+
 
 
 
