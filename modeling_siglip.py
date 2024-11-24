@@ -73,6 +73,23 @@ class SiglipVisionEmbeddings(nn.Module):
         # [Batch_Size, Num_Patches, Embed_Dim]
         return embeddings
 
+class SiglipEncoder(nn.Module):
+    def __init__(self, config:SiglipVisionConfig):
+        self.config   = config
+        self.layers   = nn.ModuleList(
+            [SiglipEncoderLayer(config) for _ in range(config.num_hidden_layers)]
+        )
+
+    def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        # inputs_embeds: [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = inputs_embeds
+
+        for encoder_layer in self.layers:
+            #[Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
+            hidden_states = encoder_layer(hidden_states)
+
+        return hidden_states
+
 class SiglipAttention(nn.Module):
 
     def __init__(self, config):
@@ -136,9 +153,6 @@ class SiglipAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, attn_weights
-
-
-
 
 class SiglipMLP(nn.Module):
     def __init__(self, config):
