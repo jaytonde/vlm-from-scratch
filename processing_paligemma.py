@@ -35,3 +35,6 @@ class PaliGemmaProcessor:
         tokenizer.add_eos_token = False
 
         self.tokenizer = tokenizer
+
+    def __call__():
+        pass
