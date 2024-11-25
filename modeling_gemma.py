@@ -97,6 +97,13 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         attention_mask  : torch.Tensor,
         kv_cache        : Optional[KVCache] = None
         ):
+        """
+        This method takes the image features, input embeddings and input ids.
+        we create masks of the text, image and pad to identify the correspoing embeddings in 
+        given input embeddings.
+        then we use this masks to add embedding to the final embeddings to use as a input
+        the gemma model.
+        """
         _, _, embed_dim             = image_features.shape
         batch_size, sequence_length = input_ids.shape
         dtype, device               = inputs_embeds.dtype, inputs_embeds.device
@@ -116,6 +123,13 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         text_mask_expanded  = text_mask.unsqueeze(-1).expand(-1, -1, embed_dim)
         pad_mask_expanded   = pad_mask.unsqueeze(-1).expand(-1, -1, embed_dim)
         image_mask_expanded = image_mask.unsqueeze(-1).expand(-1, -1, embed_dim)
+
+        # Add the text embeddings
+        final_embedding = torch.where(text_mask_expanded, inputs_embeds, final_embedding)
+        # Insert image embeddings. We can't use torch.where because the sequence length of scaled_image_features is not equal to the sequence length of the final embedding
+        final_embedding = final_embedding.masked_scatter(image_mask_expanded, scaled_image_features)
+        # Zero out padding tokens
+        final_embedding = torch.where(pad_mask_expanded, torch.zeros_like(final_embedding), final_embedding)
 
         #### CREATE THE ATTENTION MASK ####
         dtype, device = inputs_embeds.dtype, inputs_embeds.device
