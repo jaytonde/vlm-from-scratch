@@ -39,7 +39,6 @@ class GemmaConfig():
         self.attention_dropout       = attention_dropout
         self.pad_token_id            = pad_token_id
 
-
 class PaliGemmaConfig():
 
     def __init__(
@@ -72,6 +71,20 @@ class PaliGemmaConfig():
 
         self.text_config.num_image_tokens = (self.vision_config.image_size // self.vision_config.patch_size) ** 2
         self.vision_config.projection_dim = projection_dim
+
+class PaliGemmaMultiModelProjector(nn.Module):
+    def __init__(self, config: PaliGemmaConfig):
+        super().__init__()
+        self.linear = nn.Linear(config.vision_config.hidden_size, config.vision_config.projection_dim, bias=True)
+
+    def forward(self, image_features):
+        """
+        This class just mean to convert the size of the embedding to be same
+        as what we expect for gemma model.
+        """
+        # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Projection_Dim]
+        hidden_states = self.linear(image_features)
+        return hidden_states
 
 class PaliGemmaForConditionalGeneration(nn.Module):
 
