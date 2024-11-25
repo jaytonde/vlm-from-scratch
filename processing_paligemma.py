@@ -18,14 +18,14 @@ def add_image_tokens_to_prompt(prefix_prompt, bos_token, image_seq_len, image_to
 
 def resize(
     image: Image, 
-    size: Tuple[int, int]
+    size: Tuple[int, int],
     resample: Image.Resampling = None,
     reducing_gap : Optional[int] = None, 
     ) -> np.ndarray:
 
-    height, width = size
-    resized_image = image.resize((width, height), resample=resample, reducing_gap=reducing_gap)
-    return resized_image
+        height, width = size
+        resized_image = image.resize((width, height), resample=resample, reducing_gap=reducing_gap)
+        return resized_image
 
 def rescale(image: np.ndarray, scale: float, dtype: np.dtype = np.float32) -> np.ndarray:
     rescaled_image = image * scale
@@ -110,10 +110,10 @@ class PaliGemmaProcessor:
 
         pixel_values = process_images(
             images,
-            size           = (self.image_size, self.image_size)
+            size           = (self.image_size, self.image_size),
             resample       = Image.Resampling.BICUBIC,
-            rescale_factor = 1 / 255.0
-            image_mean     = IMAGENET_STANDARD_MEAN
+            rescale_factor = 1 / 255.0,
+            image_mean     = IMAGENET_STANDARD_MEAN,
             image_std      = IMAGENET_STANDARD_STD
         )
 
