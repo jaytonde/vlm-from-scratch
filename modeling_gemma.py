@@ -96,6 +96,43 @@ class GemmaAttention(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias)
 
+        self.rotary_emb = GemmaRotaryEmbedding(
+            self.head_dim,
+            max_position_embeddings = self.max_position_embeddings,
+            base                    = self.rope_theta,
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        kv_cache: Optional[KVCache] = None,
+        **kwargs,
+        ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+
+        bsz, q_len, _ = hidden_states.size() # [Batch_Size, Seq_Len, Hidden_Size]
+        # [Batch_Size, Seq_Len, Num_Heads_Q * Head_Dim]
+        query_states = self.q_proj(hidden_states)
+        # [Batch_Size, Seq_Len, Num_Heads_KV * Head_Dim]
+        key_states = self.k_proj(hidden_states)
+        # [Batch_Size, Seq_Len, Num_Heads_KV * Head_Dim]
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        # [Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        # [Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        # [Batch_Size, Seq_Len, Head_Dim], [Batch_Size, Seq_Len, Head_Dim]
+        cos, sin = self.rotary_emb(value_states, position_ids, seq_len=None)
+        # [Batch_Size, Num_Heads_Q, Seq_Len, Head_Dim], [Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        if kv_cache is not None:
+            key_states, value_states = kv_cache.update(key_states, value_states, self.layer_idx)
+
 class GemmaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
